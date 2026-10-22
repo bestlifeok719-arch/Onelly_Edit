@@ -1,0 +1,50 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install
+        run: npm install
+      - name: Add Android platform
+        run: npx cap add android
+      - name: Permissions (microphone for voice recording)
+        run: |
+          MAN=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <application#' "$MAN"
+      - name: Native fast export plugin (hardware encoder, Media3)
+        run: |
+          D=android/app/src/main/java/app/onelly/edit
+          mkdir -p "$D"
+          cp native/OnellyExport.java "$D/OnellyExport.java"
+          cp native/MainActivity.java "$D/MainActivity.java"
+          cat >> android/app/build.gradle <<'EOG'
+
+          dependencies {
+              implementation 'androidx.media3:media3-common:1.4.1'
+              implementation 'androidx.media3:media3-effect:1.4.1'
+              implementation 'androidx.media3:media3-transformer:1.4.1'
+          }
+          EOG
+      - name: Sync
+        run: npx cap sync android
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: onelly-edit-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
